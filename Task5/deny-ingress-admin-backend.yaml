@@ -1,0 +1,12 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-ingress-to-admin-backend
+  namespace: main
+spec:
+  podSelector:
+    matchLabels:
+    role: admin-back-end-api
+    policyTypes:
+      - Ingress
+    ingress: []

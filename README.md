@@ -48,8 +48,7 @@
 | cluster-viewer     | Только операции чтения (verbs: get, list, watch) для просмотра всех ресурсов кластера                  | QA, Auditors, Compliance, Monitoring Team           |
 
 ### Создание пользователя
-Запускаем скрип create-users.sh на создание пользователей:
-[create-users.sh](Task4/create-users.sh)
+Запускаем скрип create-users.sh на создание пользователей, файл [create-users.sh](Task4/create-users.sh):
 ```shel
 #!/bin/bash
 
@@ -70,8 +69,7 @@ kubectl create serviceaccount viewer
 kubectl apply -f create-roles.yaml
 ```
 
-Файл create-roles.yaml:
-[create-roles.yaml](Task4/create-roles.yaml)
+Файл [create-roles.yaml](Task4/create-roles.yaml):
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -114,8 +112,7 @@ rules:
 kubectl apply -f create-role-bindings.yaml
 ```
 
-Файл create-role-bindings.yaml:
-[create-role-bindings.yaml](Task4/create-role-bindings.yaml)
+Файл [create-role-bindings.yaml](Task4/create-role-bindings.yaml):
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -157,4 +154,59 @@ roleRef:
   kind: ClusterRole
   name: cluster-viewer
   apiGroup: rbac.authorization.k8s.io
+```
+
+## Задание 5. Управление трафиком внутри кластера Kubertnetes
+
+### Развертывание подов с назначением меток
+Создадим namespace web-systems:
+```bash
+kubectl create namespace main
+```
+
+Запускаем под с меткой role=front-end:
+```bash
+kubectl run front-end-app --image=nginx --labels role=front-end --expose --port 80 -n main
+```
+
+Запускаем под с меткой role=back-end-api:
+```bash
+kubectl run back-end-api-app --image=nginx --labels role=back-end-api --expose --port 80 -n main
+```
+
+Запускаем под с меткой role=admin-front-end:
+```bash
+kubectl run admin-front-end-app --image=nginx --labels role=admin-front-end --expose --port 80 -n main
+```
+
+Запускаем под с меткой role=admin-back-end-api (это и есть новый сервис, к которому надо ограничить доступ):
+```bash
+kubectl run admin-back-end-api-app --image=nginx --labels role=admin-back-end-api --expose --port 80 -n main
+```
+
+После выполнения этих команд появятся 4 пода.
+
+### Создание NetworkPolicy для изоляции нового сервиса
+Чтобы запретить другим подам взаимодействовать с подом, имеющим метку role=admin-back-end-api, создаём NetworkPolicy, 
+которая для выбранного podSelector, под с этой меткой, определяет пустой список ingress-правил, то есть никакие входящие соединения не разрешены.
+
+Файл [deny-ingress-admin-backend.yaml](Task5/deny-ingress-admin-backend.yaml):
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-ingress-to-admin-backend
+  namespace: main
+spec:
+  podSelector:
+    matchLabels:
+    role: admin-back-end-api
+    policyTypes:
+      - Ingress
+    ingress: []
+```
+
+После чего необходимо применить данный манифест командой:
+```bash
+kubectl apply -f deny-ingress-admin-backend.yaml
 ```
