@@ -37,3 +37,124 @@
 - Передача данных должна осуществляться в формате JSON (или XML, если требуется обмен через SOAP) с ясной схемой, что позволит эффективно валидировать входящие запросы и ответы.  
 - Должны быть настроены маппинги и преобразования данных, если внутренние форматы PropDevelopment отличаются от форматов, используемых внешним партнёром.  
 - Между системой PropDevelopment и внешняя системой, должна быть догворенность об уровне SLA, времени отклика и механизмах резервного копирования/повторения запросов на случай временной недоступности одного из сервисов.
+
+## Задание 4. Защита доступа к кластеру Kubernetes
+
+### Таблица со всеми ролями и их полномочия при работе с Kubernetes
+| Роль               | Права роли                                                                                             | Группы пользователей                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| cluster-privileged | Полные привилегии для просмотра и работы с критичными ресурсами (например, секреты, узлы)              | Security Team, DevOps, SRE (группа администраторов) |
+| cluster-configurer | Права по управлению и настройке кластера (verbs: create, update, patch, delete для выбранных ресурсов) | DevOps, Infrastructure Team                         |
+| cluster-viewer     | Только операции чтения (verbs: get, list, watch) для просмотра всех ресурсов кластера                  | QA, Auditors, Compliance, Monitoring Team           |
+
+### Создание пользователя
+Запускаем скрип create-users.sh на создание пользователей:
+[create-users.sh](Task4/create-users.sh)
+```shel
+#!/bin/bash
+
+# Создаем пользователя admin для роли cluster-privileged
+kubectl create serviceaccount admin
+
+# Создаем пользователя developer для роли cluster-configurer
+kubectl create serviceaccount developer
+
+# Создаем пользователя viewer для роли cluster-viewer
+kubectl create serviceaccount viewer
+```
+
+### Создание роли
+Запускаем манифест на создание трех ролей: cluster-privileged, cluster-configurer и cluster-viewer
+
+```bash
+kubectl apply -f create-roles.yaml
+```
+
+Файл create-roles.yaml:
+[create-roles.yaml](Task4/create-roles.yaml)
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-privileged
+rules:
+  - apiGroups: [""]
+    resources: ["*"]
+    verbs: ["*"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-configurer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "deployments", "services", "configmaps"]
+    verbs: ["create", "update", "patch", "delete", "list", "get"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "deployments", "daemonsets"],
+    verbs: ["create", "update", "patch", "delete", "list", "get"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-viewer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "deployments", "replicasets", "configmaps", "nodes"]
+    verbs: ["get", "list", "watch"]
+```
+
+### Связываем пользователя с ролью
+Что бы связать пользователей с ролью, необходимо запустить следующую команду:
+```bash
+kubectl apply -f create-role-bindings.yaml
+```
+
+Файл create-role-bindings.yaml:
+[create-role-bindings.yaml](Task4/create-role-bindings.yaml)
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-privileged-binding
+subjects:
+  - kind: ServiceAccount
+    name: admin
+    namespace: ops
+roleRef:
+  kind: ClusterRole
+  name: cluster-privileged
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-configurer-binding
+subjects:
+  - kind: ServiceAccount
+    name: developer
+roleRef:
+  kind: ClusterRole
+  name: cluster-configurer
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-viewer-binding
+subjects:
+  - kind: ServiceAccount
+    name: viewer
+roleRef:
+  kind: ClusterRole
+  name: cluster-viewer
+  apiGroup: rbac.authorization.k8s.io
+```
