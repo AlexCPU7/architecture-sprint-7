@@ -187,26 +187,113 @@ kubectl run admin-back-end-api-app --image=nginx --labels role=admin-back-end-ap
 После выполнения этих команд появятся 4 пода.
 
 ### Создание NetworkPolicy для изоляции нового сервиса
-Чтобы запретить другим подам взаимодействовать с подом, имеющим метку role=admin-back-end-api, создаём NetworkPolicy, 
-которая для выбранного podSelector, под с этой меткой, определяет пустой список ingress-правил, то есть никакие входящие соединения не разрешены.
 
-Файл [deny-ingress-admin-backend.yaml](Task5/deny-ingress-admin-backend.yaml):
+Что бы запретить трафик и дополнительно сетевые политики в обще стороны между сервисами front-end и back-end-api,
+а также admin-front-end и admin-back-end-api, необходимо применить данный манифест:
+
+Файл [non-admin-api-allow.yaml](Task5/non-admin-api-allow.yaml):
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-ingress-to-admin-backend
+  name: allow-frontend-to-backend
   namespace: main
 spec:
   podSelector:
     matchLabels:
-    role: admin-back-end-api
-    policyTypes:
-      - Ingress
-    ingress: []
+      role: front-end
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: back-end-api
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              role: back-end-api
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-frontend
+  namespace: main
+spec:
+  podSelector:
+    matchLabels:
+      role: back-end-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: front-end
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              role: front-end
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-admin-frontend-to-admin-backend
+  namespace: main
+spec:
+  podSelector:
+    matchLabels:
+      role: admin-front-end
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: admin-back-end-api
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              role: admin-back-end-api
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-admin-backend-to-admin-frontend
+  namespace: main
+spec:
+  podSelector:
+    matchLabels:
+      role: admin-back-end-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: admin-front-end
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              role: admin-front-end
+
 ```
 
-После чего необходимо применить данный манифест командой:
+Запустить командой:
 ```bash
-kubectl apply -f deny-ingress-admin-backend.yaml
+kubectl apply -f non-admin-api-allow.yaml
 ```
